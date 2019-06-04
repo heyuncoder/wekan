@@ -94,7 +94,7 @@ services:
     #image: mongo:4.0.4
     # b) For Wekan Meteor 1.6.x version at master/devel/edge branches.
     # Only for Snap and Sandstorm while they are not upgraded yet to Meteor 1.8.x
-    image: mongo:3.2.21
+    image: mongo:4.0
     #-------------------------------------------------------------------------------------
     container_name: wekan-db
     restart: always
@@ -146,7 +146,7 @@ services:
       # For example, if you want to have wekan on port 3001,
       # use 3001:8080 . Do not add any extra address etc here, that way it does not work.
       # remove port mapping if you use nginx reverse proxy, port 8080 is already exposed to wekan-tier network
-      - 80:8080
+      - 8090:8080
     environment:
       - MONGO_URL=mongodb://wekandb:27017/wekan
       #---------------------------------------------------------------
@@ -161,7 +161,7 @@ services:
       #  - http://example.com
       #  - http://boards.example.com
       #  - http://192.168.1.100    <=== using at local LAN
-      - ROOT_URL=http://localhost  #   <=== using only at same laptop/desktop where Wekan is installed
+      - ROOT_URL=http://localhost:8090  #   <=== using only at same laptop/desktop where Wekan is installed
       #---------------------------------------------------------------
       # ==== EMAIL SETTINGS ====
       # Email settings are required in both MAIL_URL and Admin Panel,
@@ -170,8 +170,8 @@ services:
       # NOTE: Special characters need to be url-encoded in MAIL_URL.
       #       You can encode those characters for example at: https://www.urlencoder.org
       #- MAIL_URL=smtp://user:pass@mailserver.example.com:25/
-      - MAIL_URL=smtp://<mail_url>:25/?ignoreTLS=true&tls={rejectUnauthorized:false}
-      - MAIL_FROM=Wekan Notifications <noreply.wekan@mydomain.com>
+      - MAIL_URL=smtp://smtp.qiye.aliyun.com:25/?ignoreTLS=true&tls={rejectUnauthorized:false}
+      - MAIL_FROM=Wekan Notifications <noreply.wekan@yaofun.com>
       #---------------------------------------------------------------
       # ==== OPTIONAL: MONGO OPLOG SETTINGS =====
       # https://github.com/wekan/wekan-mongodb/issues/2#issuecomment-378343587
