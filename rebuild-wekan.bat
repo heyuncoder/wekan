@@ -1,5 +1,10 @@
 @ECHO OFF
 
+REM NOTE: You can try this to install Meteor on Windows, it works:
+REM       https://github.com/zodern/windows-meteor-installer/
+
+REM Installing Meteor with Chocolatey does not currently work.
+
 REM NOTE: THIS .BAT DOES NOT WORK !!
 REM Use instead this webpage instructions to build on Windows:
 REM https://github.com/wekan/wekan/wiki/Install-Wekan-from-source-on-Windows
@@ -13,15 +18,15 @@ REM Install chocolatey
 
 choco install -y git curl python2 dotnet4.5.2 nano mongodb-3 mongoclient meteor
 
-curl -O https://nodejs.org/dist/v8.12.0/node-v8.12.0-x64.msi
-call node-v8.12.0-x64.msi
+curl -O https://nodejs.org/dist/v8.17.0/node-v12.15.0-x64.msi
+call node-v12.15.0-x64.msi
 
 call npm config -g set msvs_version 2015
 call meteor npm config -g set msvs_version 2015
 
 call npm -g install npm
 call npm -g install node-gyp
-call npm -g install fibers@2.0.0
+call npm -g install fibers
 cd C:\repos
 git clone https://github.com/wekan/wekan.git
 cd wekan

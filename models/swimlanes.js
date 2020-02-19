@@ -3,89 +3,127 @@ Swimlanes = new Mongo.Collection('swimlanes');
 /**
  * A swimlane is an line in the kaban board.
  */
-Swimlanes.attachSchema(new SimpleSchema({
-  title: {
-    /**
-     * the title of the swimlane
-     */
-    type: String,
-  },
-  archived: {
-    /**
-     * is the swimlane archived?
-     */
-    type: Boolean,
-    autoValue() { // eslint-disable-line consistent-return
-      if (this.isInsert && !this.isSet) {
-        return false;
-      }
+Swimlanes.attachSchema(
+  new SimpleSchema({
+    title: {
+      /**
+       * the title of the swimlane
+       */
+      type: String,
     },
-  },
-  boardId: {
-    /**
-     * the ID of the board the swimlane is attached to
-     */
-    type: String,
-  },
-  createdAt: {
-    /**
-     * creation date of the swimlane
-     */
-    type: Date,
-    autoValue() { // eslint-disable-line consistent-return
-      if (this.isInsert) {
-        return new Date();
-      } else {
-        this.unset();
-      }
+    archived: {
+      /**
+       * is the swimlane archived?
+       */
+      type: Boolean,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isInsert && !this.isSet) {
+          return false;
+        }
+      },
     },
-  },
-  sort: {
-    /**
-     * the sort value of the swimlane
-     */
-    type: Number,
-    decimal: true,
-    // XXX We should probably provide a default
-    optional: true,
-  },
-  color: {
-    /**
-     * the color of the swimlane
-     */
-    type: String,
-    optional: true,
-    // silver is the default, so it is left out
-    allowedValues: [
-      'white', 'green', 'yellow', 'orange', 'red', 'purple',
-      'blue', 'sky', 'lime', 'pink', 'black',
-      'peachpuff', 'crimson', 'plum', 'darkgreen',
-      'slateblue', 'magenta', 'gold', 'navy', 'gray',
-      'saddlebrown', 'paleturquoise', 'mistyrose', 'indigo',
-    ],
-  },
-  updatedAt: {
-    /**
-     * when was the swimlane last edited
-     */
-    type: Date,
-    optional: true,
-    autoValue() { // eslint-disable-line consistent-return
-      if (this.isUpdate) {
-        return new Date();
-      } else {
-        this.unset();
-      }
+    boardId: {
+      /**
+       * the ID of the board the swimlane is attached to
+       */
+      type: String,
     },
-  },
-  type: {
-    /**
-     * The type of swimlane
-     */
-    type: String,
-    defaultValue: 'swimlane',
-  },
-}));
+    createdAt: {
+      /**
+       * creation date of the swimlane
+       */
+      type: Date,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isInsert) {
+          return new Date();
+        } else if (this.isUpsert) {
+          return { $setOnInsert: new Date() };
+        } else {
+          this.unset();
+        }
+      },
+    },
+    sort: {
+      /**
+       * the sort value of the swimlane
+       */
+      type: Number,
+      decimal: true,
+      // XXX We should probably provide a default
+      optional: true,
+    },
+    color: {
+      /**
+       * the color of the swimlane
+       */
+      type: String,
+      optional: true,
+      // silver is the default, so it is left out
+      allowedValues: [
+        'white',
+        'green',
+        'yellow',
+        'orange',
+        'red',
+        'purple',
+        'blue',
+        'sky',
+        'lime',
+        'pink',
+        'black',
+        'peachpuff',
+        'crimson',
+        'plum',
+        'darkgreen',
+        'slateblue',
+        'magenta',
+        'gold',
+        'navy',
+        'gray',
+        'saddlebrown',
+        'paleturquoise',
+        'mistyrose',
+        'indigo',
+      ],
+    },
+    updatedAt: {
+      /**
+       * when was the swimlane last edited
+       */
+      type: Date,
+      optional: true,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isUpdate || this.isUpsert || this.isInsert) {
+          return new Date();
+        } else {
+          this.unset();
+        }
+      },
+    },
+    modifiedAt: {
+      type: Date,
+      denyUpdate: false,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isInsert || this.isUpsert || this.isUpdate) {
+          return new Date();
+        } else {
+          this.unset();
+        }
+      },
+    },
+    type: {
+      /**
+       * The type of swimlane
+       */
+      type: String,
+      defaultValue: 'swimlane',
+    },
+  }),
+);
 
 Swimlanes.allow({
   insert(userId, doc) {
@@ -109,7 +147,7 @@ Swimlanes.helpers({
     const _id = Swimlanes.insert(this);
 
     const query = {
-      swimlaneId: {$in: [oldId, '']},
+      swimlaneId: { $in: [oldId, ''] },
       archived: false,
     };
     if (oldBoardId) {
@@ -117,7 +155,7 @@ Swimlanes.helpers({
     }
 
     // Copy all lists in swimlane
-    Lists.find(query).forEach((list) => {
+    Lists.find(query).forEach(list => {
       list.type = 'list';
       list.swimlaneId = oldId;
       list.boardId = boardId;
@@ -126,18 +164,43 @@ Swimlanes.helpers({
   },
 
   cards() {
-    return Cards.find(Filter.mongoSelector({
-      swimlaneId: this._id,
-      archived: false,
-    }), { sort: ['sort'] });
+    return Cards.find(
+      Filter.mongoSelector({
+        swimlaneId: this._id,
+        archived: false,
+      }),
+      { sort: ['sort'] },
+    );
   },
 
   lists() {
-    return Lists.find({
-      boardId: this.boardId,
-      swimlaneId: {$in: [this._id, '']},
-      archived: false,
-    }, { sort: ['sort'] });
+    //currentUser = Meteor.user();
+    //if (currentUser) {
+    //  enabled = Meteor.user().hasSortBy();
+    //}
+    //return enabled ? this.newestLists() : this.draggableLists();
+    return this.draggableLists();
+  },
+  newestLists() {
+    // sorted lists from newest to the oldest, by its creation date or its cards' last modification date
+    return Lists.find(
+      {
+        boardId: this.boardId,
+        swimlaneId: { $in: [this._id, ''] },
+        archived: false,
+      },
+      { sort: { modifiedAt: -1 } },
+    );
+  },
+  draggableLists() {
+    return Lists.find(
+      {
+        boardId: this.boardId,
+        swimlaneId: { $in: [this._id, ''] },
+        archived: false,
+      },
+      { sort: ['sort'] },
+    );
   },
 
   myLists() {
@@ -153,8 +216,7 @@ Swimlanes.helpers({
   },
 
   colorClass() {
-    if (this.color)
-      return this.color;
+    if (this.color) return this.color;
     return '';
   },
 
@@ -182,7 +244,7 @@ Swimlanes.helpers({
   },
 
   remove() {
-    Swimlanes.remove({ _id: this._id});
+    Swimlanes.remove({ _id: this._id });
   },
 });
 
@@ -193,7 +255,7 @@ Swimlanes.mutations({
 
   archive() {
     if (this.isTemplateSwimlane()) {
-      this.myLists().forEach((list) => {
+      this.myLists().forEach(list => {
         return list.archive();
       });
     }
@@ -202,7 +264,7 @@ Swimlanes.mutations({
 
   restore() {
     if (this.isTemplateSwimlane()) {
-      this.myLists().forEach((list) => {
+      this.myLists().forEach(list => {
         return list.restore();
       });
     }
@@ -225,6 +287,7 @@ Swimlanes.hookOptions.after.update = { fetchPrevious: false };
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
+    Swimlanes._collection._ensureIndex({ modifiedAt: -1 });
     Swimlanes._collection._ensureIndex({ boardId: 1 });
   });
 
@@ -239,18 +302,21 @@ if (Meteor.isServer) {
   });
 
   Swimlanes.before.remove(function(userId, doc) {
-    const lists = Lists.find({
-      boardId: doc.boardId,
-      swimlaneId: {$in: [doc._id, '']},
-      archived: false,
-    }, { sort: ['sort'] });
+    const lists = Lists.find(
+      {
+        boardId: doc.boardId,
+        swimlaneId: { $in: [doc._id, ''] },
+        archived: false,
+      },
+      { sort: ['sort'] },
+    );
 
     if (lists.count() < 2) {
-      lists.forEach((list) => {
+      lists.forEach(list => {
         list.remove();
       });
     } else {
-      Cards.remove({swimlaneId: doc._id});
+      Cards.remove({ swimlaneId: doc._id });
     }
 
     Activities.insert({
@@ -287,22 +353,23 @@ if (Meteor.isServer) {
    * @return_type [{_id: string,
    *                title: string}]
    */
-  JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes', function (req, res) {
+  JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes', function(req, res) {
     try {
       const paramBoardId = req.params.boardId;
-      Authentication.checkBoardAccess( req.userId, paramBoardId);
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
 
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Swimlanes.find({ boardId: paramBoardId, archived: false }).map(function (doc) {
-          return {
-            _id: doc._id,
-            title: doc.title,
-          };
-        }),
+        data: Swimlanes.find({ boardId: paramBoardId, archived: false }).map(
+          function(doc) {
+            return {
+              _id: doc._id,
+              title: doc.title,
+            };
+          },
+        ),
       });
-    }
-    catch (error) {
+    } catch (error) {
       JsonRoutes.sendResult(res, {
         code: 200,
         data: error,
@@ -319,17 +386,23 @@ if (Meteor.isServer) {
    * @param {string} swimlaneId the ID of the swimlane
    * @return_type Swimlanes
    */
-  JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes/:swimlaneId', function (req, res) {
+  JsonRoutes.add('GET', '/api/boards/:boardId/swimlanes/:swimlaneId', function(
+    req,
+    res,
+  ) {
     try {
       const paramBoardId = req.params.boardId;
       const paramSwimlaneId = req.params.swimlaneId;
-      Authentication.checkBoardAccess( req.userId, paramBoardId);
+      Authentication.checkBoardAccess(req.userId, paramBoardId);
       JsonRoutes.sendResult(res, {
         code: 200,
-        data: Swimlanes.findOne({ _id: paramSwimlaneId, boardId: paramBoardId, archived: false }),
+        data: Swimlanes.findOne({
+          _id: paramSwimlaneId,
+          boardId: paramBoardId,
+          archived: false,
+        }),
       });
-    }
-    catch (error) {
+    } catch (error) {
       JsonRoutes.sendResult(res, {
         code: 200,
         data: error,
@@ -346,9 +419,9 @@ if (Meteor.isServer) {
    * @param {string} title the new title of the swimlane
    * @return_type {_id: string}
    */
-  JsonRoutes.add('POST', '/api/boards/:boardId/swimlanes', function (req, res) {
+  JsonRoutes.add('POST', '/api/boards/:boardId/swimlanes', function(req, res) {
     try {
-      Authentication.checkUserId( req.userId);
+      Authentication.checkUserId(req.userId);
       const paramBoardId = req.params.boardId;
       const board = Boards.findOne(paramBoardId);
       const id = Swimlanes.insert({
@@ -362,8 +435,7 @@ if (Meteor.isServer) {
           _id: id,
         },
       });
-    }
-    catch (error) {
+    } catch (error) {
       JsonRoutes.sendResult(res, {
         code: 200,
         data: error,
@@ -382,25 +454,29 @@ if (Meteor.isServer) {
    * @param {string} swimlaneId the ID of the swimlane
    * @return_type {_id: string}
    */
-  JsonRoutes.add('DELETE', '/api/boards/:boardId/swimlanes/:swimlaneId', function (req, res) {
-    try {
-      Authentication.checkUserId( req.userId);
-      const paramBoardId = req.params.boardId;
-      const paramSwimlaneId = req.params.swimlaneId;
-      Swimlanes.remove({ _id: paramSwimlaneId, boardId: paramBoardId });
-      JsonRoutes.sendResult(res, {
-        code: 200,
-        data: {
-          _id: paramSwimlaneId,
-        },
-      });
-    }
-    catch (error) {
-      JsonRoutes.sendResult(res, {
-        code: 200,
-        data: error,
-      });
-    }
-  });
-
+  JsonRoutes.add(
+    'DELETE',
+    '/api/boards/:boardId/swimlanes/:swimlaneId',
+    function(req, res) {
+      try {
+        Authentication.checkUserId(req.userId);
+        const paramBoardId = req.params.boardId;
+        const paramSwimlaneId = req.params.swimlaneId;
+        Swimlanes.remove({ _id: paramSwimlaneId, boardId: paramBoardId });
+        JsonRoutes.sendResult(res, {
+          code: 200,
+          data: {
+            _id: paramSwimlaneId,
+          },
+        });
+      } catch (error) {
+        JsonRoutes.sendResult(res, {
+          code: 200,
+          data: error,
+        });
+      }
+    },
+  );
 }
+
+export default Swimlanes;
