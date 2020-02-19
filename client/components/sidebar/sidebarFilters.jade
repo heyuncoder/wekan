@@ -5,6 +5,10 @@
 
 template(name="filterSidebar")
   ul.sidebar-list
+    span {{_ 'list-filter-label'}}
+    form.js-list-filter
+      input(type="text")
+  ul.sidebar-list
     li(class="{{#if Filter.labelIds.isSelected undefined}}active{{/if}}")
           a.name.js-toggle-label-filter
             span.sidebar-list-item-description
@@ -56,6 +60,22 @@ template(name="filterSidebar")
           if Filter.customFields.isSelected _id
             i.fa.fa-check
   hr
+  ul.sidebar-list
+    li(class="{{#if Filter.archive.isSelected _id}}active{{/if}}")
+      a.name.js-toggle-archive-filter
+        span.sidebar-list-item-description
+          | {{_ 'filter-show-archive'}}
+        if Filter.archive.isSelected _id
+          i.fa.fa-check
+  hr
+  ul.sidebar-list
+    li(class="{{#if Filter.hideEmpty.isSelected _id}}active{{/if}}")
+      a.name.js-toggle-hideEmpty-filter
+        span.sidebar-list-item-description
+          | {{_ 'filter-hide-empty'}}
+        if Filter.hideEmpty.isSelected _id
+          i.fa.fa-check
+  hr
   span {{_ 'advanced-filter-label'}}
   input.js-field-advanced-filter(type="text")
   span {{_ 'advanced-filter-description'}}
@@ -97,13 +117,14 @@ template(name="multiselectionSidebar")
               i.fa.fa-check
             else if someSelectedElementHave 'member' _id
               i.fa.fa-ellipsis-h
-  hr
-  a.sidebar-btn.js-move-selection
-    i.fa.fa-share
-    span {{_ 'move-selection'}}
-  a.sidebar-btn.js-archive-selection
-    i.fa.fa-archive
-    span {{_ 'archive-selection'}}
+  unless currentUser.isWorker
+    hr
+    a.sidebar-btn.js-move-selection
+      i.fa.fa-share
+      span {{_ 'move-selection'}}
+    a.sidebar-btn.js-archive-selection
+      i.fa.fa-archive
+      span {{_ 'archive-selection'}}
 
 template(name="disambiguateMultiLabelPopup")
   p {{_ 'what-to-do'}}

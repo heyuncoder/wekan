@@ -1,17 +1,30 @@
+import { Cookies } from 'meteor/ostrio:cookies';
+const cookies = new Cookies();
 const { calculateIndex, enableClickOnTouch } = Utils;
 
 function currentListIsInThisSwimlane(swimlaneId) {
   const currentList = Lists.findOne(Session.get('currentList'));
-  return currentList && (currentList.swimlaneId === swimlaneId || currentList.swimlaneId === '');
+  return (
+    currentList &&
+    (currentList.swimlaneId === swimlaneId || currentList.swimlaneId === '')
+  );
 }
 
 function currentCardIsInThisList(listId, swimlaneId) {
   const currentCard = Cards.findOne(Session.get('currentCard'));
   const currentUser = Meteor.user();
-  if (currentUser && currentUser.profile && currentUser.profile.boardView === 'board-view-swimlanes')
-    return currentCard && currentCard.listId === listId && currentCard.swimlaneId === swimlaneId;
-  else // Default view: board-view-lists
-    return currentCard && currentCard.listId === listId;
+  if (
+    currentUser &&
+    currentUser.profile &&
+    Utils.boardView() === 'board-view-swimlanes'
+  )
+    return (
+      currentCard &&
+      currentCard.listId === listId &&
+      currentCard.swimlaneId === swimlaneId
+    );
+  // Default view: board-view-lists
+  else return currentCard && currentCard.listId === listId;
   // https://github.com/wekan/wekan/issues/1623
   // https://github.com/ChronikEwok/wekan/commit/cad9b20451bb6149bfb527a99b5001873b06c3de
   // TODO: In public board, if you would like to switch between List/Swimlane view, you could
@@ -45,7 +58,6 @@ function initSortable(boardComponent, $listsDom) {
   $listsDom.sortable({
     tolerance: 'pointer',
     helper: 'clone',
-    handle: '.js-list-header',
     items: '.js-list:not(.js-list-composer)',
     placeholder: 'list placeholder',
     distance: 7,
@@ -79,16 +91,68 @@ function initSortable(boardComponent, $listsDom) {
   enableClickOnTouch('.js-list:not(.js-list-composer)');
 
   function userIsMember() {
-    return Meteor.user() && Meteor.user().isBoardMember() && !Meteor.user().isCommentOnly();
+    return (
+      Meteor.user() &&
+      Meteor.user().isBoardMember() &&
+      !Meteor.user().isCommentOnly() &&
+      !Meteor.user().isWorker()
+    );
   }
 
-  // Disable drag-dropping while in multi-selection mode, or if the current user
-  // is not a board member
   boardComponent.autorun(() => {
+    let showDesktopDragHandles = false;
+    currentUser = Meteor.user();
+    if (currentUser) {
+      showDesktopDragHandles = (currentUser.profile || {})
+        .showDesktopDragHandles;
+    } else if (cookies.has('showDesktopDragHandles')) {
+      showDesktopDragHandles = true;
+    } else {
+      showDesktopDragHandles = false;
+    }
+
+    if (!Utils.isMiniScreen() && showDesktopDragHandles) {
+      $listsDom.sortable({
+        handle: '.js-list-handle',
+      });
+    } else if (!Utils.isMiniScreen() && !showDesktopDragHandles) {
+      $listsDom.sortable({
+        handle: '.js-list-header',
+      });
+    }
+
     const $listDom = $listsDom;
     if ($listDom.data('sortable')) {
-      $listsDom.sortable('option', 'disabled',
-        MultiSelection.isActive() || !userIsMember());
+      $listsDom.sortable(
+        'option',
+        'disabled',
+        // Disable drag-dropping when user is not member/is worker/is miniscreen
+        !userIsMember(),
+        // Not disable drag-dropping while in multi-selection mode
+        // MultiSelection.isActive() || !userIsMember(),
+      );
+    }
+
+    if ($listDom.data('sortable')) {
+      $listsDom.sortable(
+        'option',
+        'disabled',
+        // Disable drag-dropping when user is not member/is worker/is miniscreen
+        Meteor.user().isWorker(),
+        // Not disable drag-dropping while in multi-selection mode
+        // MultiSelection.isActive() || !userIsMember(),
+      );
+    }
+
+    if ($listDom.data('sortable')) {
+      $listsDom.sortable(
+        'option',
+        'disabled',
+        // Disable drag-dropping when user is not member/is worker/is miniscreen
+        Utils.isMiniScreen(),
+        // Not disable drag-dropping while in multi-selection mode
+        // MultiSelection.isActive() || !userIsMember(),
+      );
     }
   });
 }
@@ -124,47 +188,72 @@ BlazeComponent.extendComponent({
   },
 
   events() {
-    return [{
-      // Click-and-drag action
-      'mousedown .board-canvas'(evt) {
-        // Translating the board canvas using the click-and-drag action can
-        // conflict with the build-in browser mechanism to select text. We
-        // define a list of elements in which we disable the dragging because
-        // the user will legitimately expect to be able to select some text with
-        // his mouse.
-        const noDragInside = ['a', 'input', 'textarea', 'p', '.js-list-header'];
-        if ($(evt.target).closest(noDragInside.join(',')).length === 0 && this.$('.swimlane').prop('clientHeight') > evt.offsetY) {
-          this._isDragging = true;
-          this._lastDragPositionX = evt.clientX;
-        }
+    return [
+      {
+        // Click-and-drag action
+        'mousedown .board-canvas'(evt) {
+          // Translating the board canvas using the click-and-drag action can
+          // conflict with the build-in browser mechanism to select text. We
+          // define a list of elements in which we disable the dragging because
+          // the user will legitimately expect to be able to select some text with
+          // his mouse.
+
+          let showDesktopDragHandles = false;
+          currentUser = Meteor.user();
+          if (currentUser) {
+            showDesktopDragHandles = (currentUser.profile || {})
+              .showDesktopDragHandles;
+          } else if (cookies.has('showDesktopDragHandles')) {
+            showDesktopDragHandles = true;
+          } else {
+            showDesktopDragHandles = false;
+          }
+
+          const noDragInside = ['a', 'input', 'textarea', 'p'].concat(
+            Utils.isMiniScreen() ||
+              (!Utils.isMiniScreen() && showDesktopDragHandles)
+              ? ['.js-list-handle', '.js-swimlane-header-handle']
+              : ['.js-list-header'],
+          );
+
+          if (
+            $(evt.target).closest(noDragInside.join(',')).length === 0 &&
+            this.$('.swimlane').prop('clientHeight') > evt.offsetY
+          ) {
+            this._isDragging = true;
+            this._lastDragPositionX = evt.clientX;
+          }
+        },
+        mouseup() {
+          if (this._isDragging) {
+            this._isDragging = false;
+          }
+        },
+        mousemove(evt) {
+          if (this._isDragging) {
+            // Update the canvas position
+            this.listsDom.scrollLeft -= evt.clientX - this._lastDragPositionX;
+            this._lastDragPositionX = evt.clientX;
+            // Disable browser text selection while dragging
+            evt.stopPropagation();
+            evt.preventDefault();
+            // Don't close opened card or inlined form at the end of the
+            // click-and-drag.
+            EscapeActions.executeUpTo('popup-close');
+            EscapeActions.preventNextClick();
+          }
+        },
       },
-      'mouseup'() {
-        if (this._isDragging) {
-          this._isDragging = false;
-        }
-      },
-      'mousemove'(evt) {
-        if (this._isDragging) {
-          // Update the canvas position
-          this.listsDom.scrollLeft -= evt.clientX - this._lastDragPositionX;
-          this._lastDragPositionX = evt.clientX;
-          // Disable browser text selection while dragging
-          evt.stopPropagation();
-          evt.preventDefault();
-          // Don't close opened card or inlined form at the end of the
-          // click-and-drag.
-          EscapeActions.executeUpTo('popup-close');
-          EscapeActions.preventNextClick();
-        }
-      },
-    }];
+    ];
   },
 }).register('swimlane');
 
 BlazeComponent.extendComponent({
   onCreated() {
     this.currentBoard = Boards.findOne(Session.get('currentBoard'));
-    this.isListTemplatesSwimlane = this.currentBoard.isTemplatesBoard() && this.currentData().isListTemplatesSwimlane();
+    this.isListTemplatesSwimlane =
+      this.currentBoard.isTemplatesBoard() &&
+      this.currentData().isListTemplatesSwimlane();
     this.currentSwimlane = this.currentData();
   },
 
@@ -174,38 +263,80 @@ BlazeComponent.extendComponent({
   },
 
   events() {
-    return [{
-      submit(evt) {
-        evt.preventDefault();
-        const titleInput = this.find('.list-name-input');
-        const title = titleInput.value.trim();
-        if (title) {
-          Lists.insert({
-            title,
-            boardId: Session.get('currentBoard'),
-            sort: $('.list').length,
-            type: (this.isListTemplatesSwimlane)?'template-list':'list',
-            swimlaneId: (this.currentBoard.isTemplatesBoard())?this.currentSwimlane._id:'',
-          });
+    return [
+      {
+        submit(evt) {
+          evt.preventDefault();
+          const titleInput = this.find('.list-name-input');
+          const title = titleInput.value.trim();
+          if (title) {
+            Lists.insert({
+              title,
+              boardId: Session.get('currentBoard'),
+              sort: $('.list').length,
+              type: this.isListTemplatesSwimlane ? 'template-list' : 'list',
+              swimlaneId: this.currentBoard.isTemplatesBoard()
+                ? this.currentSwimlane._id
+                : '',
+            });
 
-          titleInput.value = '';
-          titleInput.focus();
-        }
+            titleInput.value = '';
+            titleInput.focus();
+          }
+        },
+        'click .js-list-template': Popup.open('searchElement'),
       },
-      'click .js-list-template': Popup.open('searchElement'),
-    }];
+    ];
   },
 }).register('addListForm');
 
 Template.swimlane.helpers({
+  showDesktopDragHandles() {
+    currentUser = Meteor.user();
+    if (currentUser) {
+      return (currentUser.profile || {}).showDesktopDragHandles;
+    } else if (cookies.has('showDesktopDragHandles')) {
+      return true;
+    } else {
+      return false;
+    }
+  },
   canSeeAddList() {
-    return Meteor.user() && Meteor.user().isBoardMember() && !Meteor.user().isCommentOnly();
+    return (
+      Meteor.user() &&
+      Meteor.user().isBoardMember() &&
+      !Meteor.user().isCommentOnly() &&
+      !Meteor.user().isWorker()
+    );
   },
 });
 
 BlazeComponent.extendComponent({
   currentCardIsInThisList(listId, swimlaneId) {
     return currentCardIsInThisList(listId, swimlaneId);
+  },
+  visible(list) {
+    if (list.archived) {
+      // Show archived list only when filter archive is on or archive is selected
+      if (!(Filter.archive.isSelected() || archivedRequested)) {
+        return false;
+      }
+    }
+    if (Filter.lists._isActive()) {
+      if (!list.title.match(Filter.lists.getRegexSelector())) {
+        return false;
+      }
+    }
+    if (Filter.hideEmpty.isSelected()) {
+      const swimlaneId = this.parentComponent()
+        .parentComponent()
+        .data()._id;
+      const cards = list.cards(swimlaneId);
+      if (cards.count() === 0) {
+        return false;
+      }
+    }
+    return true;
   },
   onRendered() {
     const boardComponent = this.parentComponent();

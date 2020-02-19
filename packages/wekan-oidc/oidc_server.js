@@ -10,15 +10,16 @@ OAuth.registerService('oidc', 2, null, function (query) {
   var expiresAt = (+new Date) + (1000 * parseInt(token.expires_in, 10));
 
   var userinfo = getUserInfo(accessToken);
+  if (userinfo.ocs) userinfo = userinfo.ocs.data; // Nextcloud hack
   if (debug) console.log('XXX: userinfo:', userinfo);
 
   var serviceData = {};
-  serviceData.id = userinfo[process.env.OAUTH2_ID_MAP] || userinfo["id"];
-  serviceData.username = userinfo[process.env.OAUTH2_USERNAME_MAP] || userinfo["uid"];
-  serviceData.fullname = userinfo[process.env.OAUTH2_FULLNAME_MAP] || userinfo["displayName"];
+  serviceData.id = userinfo[process.env.OAUTH2_ID_MAP]; // || userinfo["id"];
+  serviceData.username = userinfo[process.env.OAUTH2_USERNAME_MAP]; // || userinfo["uid"];
+  serviceData.fullname = userinfo[process.env.OAUTH2_FULLNAME_MAP]; // || userinfo["displayName"];
   serviceData.accessToken = accessToken;
   serviceData.expiresAt = expiresAt;
-  serviceData.email = userinfo[process.env.OAUTH2_EMAIL_MAP] || userinfo["email"];
+  serviceData.email = userinfo[process.env.OAUTH2_EMAIL_MAP]; // || userinfo["email"];
 
   if (accessToken) {
     var tokenContent = getTokenContent(accessToken);
@@ -31,8 +32,8 @@ OAuth.registerService('oidc', 2, null, function (query) {
   if (debug) console.log('XXX: serviceData:', serviceData);
 
   var profile = {};
-  profile.name = userinfo[process.env.OAUTH2_FULLNAME_MAP] || userinfo["displayName"];
-  profile.email = userinfo[process.env.OAUTH2_EMAIL_MAP] || userinfo["email"];
+  profile.name = userinfo[process.env.OAUTH2_FULLNAME_MAP]; // || userinfo["displayName"];
+  profile.email = userinfo[process.env.OAUTH2_EMAIL_MAP]; // || userinfo["email"];
   if (debug) console.log('XXX: profile:', profile);
 
   return {
@@ -49,7 +50,12 @@ if (Meteor.release) {
 var getToken = function (query) {
   var debug = process.env.DEBUG || false;
   var config = getConfiguration();
-  var serverTokenEndpoint = config.serverUrl + config.tokenEndpoint;
+  if(config.tokenEndpoint.includes('https://')){
+    var serverTokenEndpoint = config.tokenEndpoint;
+  }else{
+    var serverTokenEndpoint = config.serverUrl + config.tokenEndpoint;
+  }
+  var requestPermissions = config.requestPermissions;
   var response;
 
   try {
@@ -66,6 +72,7 @@ var getToken = function (query) {
           client_secret: OAuth.openSecret(config.secret),
           redirect_uri: OAuth._redirectUri('oidc', config),
           grant_type: 'authorization_code',
+          scope: requestPermissions,
           state: query.state
         }
       }
@@ -125,9 +132,9 @@ var getTokenContent = function (token) {
   if (token) {
     try {
       var parts = token.split('.');
-      var header = JSON.parse(new Buffer(parts[0], 'base64').toString());
-      content = JSON.parse(new Buffer(parts[1], 'base64').toString());
-      var signature = new Buffer(parts[2], 'base64');
+      var header = JSON.parse(Buffer.from(parts[0], 'base64').toString());
+      content = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      var signature = Buffer.from(parts[2], 'base64');
       var signed = parts[0] + '.' + parts[1];
     } catch (err) {
       this.content = {

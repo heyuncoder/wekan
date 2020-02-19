@@ -1,30 +1,13 @@
 #!/bin/bash
 
-function wekan_repo_check(){
-      git_remotes="$(git remote show 2>/dev/null)"
-      res=""
-      for i in $git_remotes; do
-            res="$(git remote get-url $i | sed 's/.*wekan\/wekan.*/wekan\/wekan/')"
-            if [[ "$res" == "wekan/wekan" ]]; then
-                break
-            fi
-      done
-
-      if [[ "$res" != "wekan/wekan" ]]; then
-            echo "$PWD is not a wekan repository"
-            exit;
-      fi
-}
-
 # If you want to restart even on crash, uncomment while and done lines.
 #while true; do
-      wekan_repo_check
       cd .build/bundle
       #---------------------------------------------
       # Debug OIDC OAuth2 etc.
       #export DEBUG=true
       #---------------------------------------------
-      export MONGO_URL='mongodb://127.0.0.1:27019/wekan'
+      export MONGO_URL='mongodb://127.0.0.1:27018/wekan'
       #---------------------------------------------
       # Production: https://example.com/wekan
       # Local: http://localhost:2000
@@ -53,9 +36,59 @@ function wekan_repo_check(){
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURES_BERORE=3
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_LOCKOUT_PERIOD=60
       #export ACCOUNTS_LOCKOUT_UNKNOWN_USERS_FAILURE_WINDOW=15
-      #---------------------------------------------
+      #---------------------------------------------------------------
+      # ==== RICH TEXT EDITOR IN CARD COMMENTS ====
+      # https://github.com/wekan/wekan/pull/2560
+      export RICHER_CARD_COMMENT_EDITOR=false
+      #---------------------------------------------------------------
+      # ==== CARD OPENED, SEND WEBHOOK MESSAGE ====
+      export CARD_OPENED_WEBHOOK_ENABLED=false
+      #---------------------------------------------------------------
+      # ==== Allow to shrink attached/pasted image ====
+      # https://github.com/wekan/wekan/pull/2544
+      #export MAX_IMAGE_PIXEL=1024
+      #export IMAGE_COMPRESS_RATIO=80
+      #---------------------------------------------------------------
+      # ==== BIGEVENTS DUE ETC NOTIFICATIONS =====
+      # https://github.com/wekan/wekan/pull/2541
+      # Introduced a system env var BIGEVENTS_PATTERN default as "NONE",
+      # so any activityType matches the pattern, system will send out
+      # notifications to all board members no matter they are watching
+      # or tracking the board or not. Owner of the wekan server can
+      # disable the feature by setting this variable to "NONE" or
+      # change the pattern to any valid regex. i.e. '|' delimited
+      # activityType names.
+      # a) Example
+      #export BIGEVENTS_PATTERN=due
+      # b) All
+      #export BIGEVENTS_PATTERN=received|start|due|end
+      # c) Disabled
+      export BIGEVENTS_PATTERN=NONE
+      #---------------------------------------------------------------
+      # ==== EMAIL DUE DATE NOTIFICATION =====
+      # https://github.com/wekan/wekan/pull/2536
+      # System timelines will be showing any user modification for
+      # dueat startat endat receivedat, also notification to
+      # the watchers and if any card is due, about due or past due.
+      #
+      # Notify due days, default is None.
+      #export NOTIFY_DUE_DAYS_BEFORE_AND_AFTER=2,0
+      # it will notify user 2 days before due day and on the due day
+      #
+      # Notify due at hour of day. Default every morning at 8am. Can be 0-23.
+      # If env variable has parsing error, use default. Notification sent to watchers.
+      #export NOTIFY_DUE_AT_HOUR_OF_DAY=8
+      #-----------------------------------------------------------------
+      # ==== EMAIL NOTIFICATION TIMEOUT, ms =====
+      # Defaut: 30000 ms = 30s
+      #export EMAIL_NOTIFICATION_TIMEOUT=30000
+      #-----------------------------------------------------------------
       # CORS: Set Access-Control-Allow-Origin header. Example: *
       #export CORS=*
+      # To enable the Set Access-Control-Allow-Headers header. "Authorization,Content-Type" is required for cross-origin use of the API.
+      #export CORS_ALLOW_HEADERS=Authorization,Content-Type
+      # To enable the Set Access-Control-Expose-Headers header.  This is not needed for typical CORS situations. Example: *
+      #export CORS_EXPOSE_HEADERS=*
       #---------------------------------------------
       ## Optional: Integration with Matomo https://matomo.org that is installed to your server
       ## The address of the server where Matomo is hosted:
@@ -186,7 +219,12 @@ function wekan_repo_check(){
       #export LDAP_AUTHENTIFICATION=false
       # LDAP_AUTHENTIFICATION_USERDN : The search user DN
       # example :  export LDAP_AUTHENTIFICATION_USERDN=cn=admin,dc=example,dc=org
-      #export LDAP_AUTHENTIFICATION_USERDN=
+      #----------------------------------------------------------------------------
+      # The search user DN - You need quotes when you have spaces in parameters
+      # 2 examples:
+      #export LDAP_AUTHENTIFICATION_USERDN="CN=ldap admin,CN=users,DC=domainmatter,DC=lan"
+      #export LDAP_AUTHENTIFICATION_USERDN="CN=wekan_adm,OU=serviceaccounts,OU=admin,OU=prod,DC=mydomain,DC=com"
+      #---------------------------------------------------------------------------
       # LDAP_AUTHENTIFICATION_PASSWORD : The password for the search user
       # example : AUTHENTIFICATION_PASSWORD=admin
       #export LDAP_AUTHENTIFICATION_PASSWORD=
@@ -197,8 +235,10 @@ function wekan_repo_check(){
       # example :  export LDAP_BACKGROUND_SYNC=true
       #export LDAP_BACKGROUND_SYNC=false
       # LDAP_BACKGROUND_SYNC_INTERVAL : At which interval does the background task sync in milliseconds
-      # example :  export LDAP_BACKGROUND_SYNC_INTERVAL=12345
-      #export LDAP_BACKGROUND_SYNC_INTERVAL=100
+      # At which interval does the background task sync in milliseconds.
+      # Leave this unset, so it uses default, and does not crash.
+      # https://github.com/wekan/wekan/issues/2354#issuecomment-515305722
+      export LDAP_BACKGROUND_SYNC_INTERVAL=''
       # LDAP_BACKGROUND_SYNC_KEEP_EXISTANT_USERS_UPDATED :
       # example :  export LDAP_BACKGROUND_SYNC_KEEP_EXISTANT_USERS_UPDATED=true
       #export LDAP_BACKGROUND_SYNC_KEEP_EXISTANT_USERS_UPDATED=false
@@ -216,6 +256,8 @@ function wekan_repo_check(){
       #export LDAP_REJECT_UNAUTHORIZED=false
       # Option to login to the LDAP server with the user's own username and password, instead of an administrator key. Default: false (use administrator key).
       #export LDAP_USER_AUTHENTICATION=true
+      # Which field is used to find the user for the user authentication. Default: uid.
+      #export LDAP_USER_AUTHENTICATION_FIELD=uid
       # LDAP_USER_SEARCH_FILTER : Optional extra LDAP filters. Don't forget the outmost enclosing parentheses if needed
       # example :  export LDAP_USER_SEARCH_FILTER=
       #export LDAP_USER_SEARCH_FILTER=

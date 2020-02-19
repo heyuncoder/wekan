@@ -3,49 +3,66 @@ Checklists = new Mongo.Collection('checklists');
 /**
  * A Checklist
  */
-Checklists.attachSchema(new SimpleSchema({
-  cardId: {
-    /**
-     * The ID of the card the checklist is in
-     */
-    type: String,
-  },
-  title: {
-    /**
-     * the title of the checklist
-     */
-    type: String,
-    defaultValue: 'Checklist',
-  },
-  finishedAt: {
-    /**
-     * When was the checklist finished
-     */
-    type: Date,
-    optional: true,
-  },
-  createdAt: {
-    /**
-     * Creation date of the checklist
-     */
-    type: Date,
-    denyUpdate: false,
-    autoValue() { // eslint-disable-line consistent-return
-      if (this.isInsert) {
-        return new Date();
-      } else {
-        this.unset();
-      }
+Checklists.attachSchema(
+  new SimpleSchema({
+    cardId: {
+      /**
+       * The ID of the card the checklist is in
+       */
+      type: String,
     },
-  },
-  sort: {
-    /**
-     * sorting value of the checklist
-     */
-    type: Number,
-    decimal: true,
-  },
-}));
+    title: {
+      /**
+       * the title of the checklist
+       */
+      type: String,
+      defaultValue: 'Checklist',
+    },
+    finishedAt: {
+      /**
+       * When was the checklist finished
+       */
+      type: Date,
+      optional: true,
+    },
+    createdAt: {
+      /**
+       * Creation date of the checklist
+       */
+      type: Date,
+      denyUpdate: false,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isInsert) {
+          return new Date();
+        } else if (this.isUpsert) {
+          return { $setOnInsert: new Date() };
+        } else {
+          this.unset();
+        }
+      },
+    },
+    modifiedAt: {
+      type: Date,
+      denyUpdate: false,
+      // eslint-disable-next-line consistent-return
+      autoValue() {
+        if (this.isInsert || this.isUpsert || this.isUpdate) {
+          return new Date();
+        } else {
+          this.unset();
+        }
+      },
+    },
+    sort: {
+      /**
+       * sorting value of the checklist
+       */
+      type: Number,
+      decimal: true,
+    },
+  }),
+);
 
 Checklists.helpers({
   copy(newCardId) {
@@ -53,7 +70,7 @@ Checklists.helpers({
     this._id = null;
     this.cardId = newCardId;
     const newChecklistId = Checklists.insert(this);
-    ChecklistItems.find({checklistId: oldChecklistId}).forEach((item) => {
+    ChecklistItems.find({ checklistId: oldChecklistId }).forEach(item => {
       item._id = null;
       item.checklistId = newChecklistId;
       item.cardId = newCardId;
@@ -65,9 +82,12 @@ Checklists.helpers({
     return ChecklistItems.find({ checklistId: this._id }).count();
   },
   items() {
-    return ChecklistItems.find({
-      checklistId: this._id,
-    }, { sort: ['sort'] });
+    return ChecklistItems.find(
+      {
+        checklistId: this._id,
+      },
+      { sort: ['sort'] },
+    );
   },
   finishedCount() {
     return ChecklistItems.find({
@@ -78,20 +98,20 @@ Checklists.helpers({
   isFinished() {
     return 0 !== this.itemCount() && this.itemCount() === this.finishedCount();
   },
-  checkAllItems(){
-    const checkItems = ChecklistItems.find({checklistId: this._id});
-    checkItems.forEach(function(item){
+  checkAllItems() {
+    const checkItems = ChecklistItems.find({ checklistId: this._id });
+    checkItems.forEach(function(item) {
       item.check();
     });
   },
-  uncheckAllItems(){
-    const checkItems = ChecklistItems.find({checklistId: this._id});
-    checkItems.forEach(function(item){
+  uncheckAllItems() {
+    const checkItems = ChecklistItems.find({ checklistId: this._id });
+    checkItems.forEach(function(item) {
       item.uncheck();
     });
   },
   itemIndex(itemId) {
-    const items = self.findOne({_id : this._id}).items;
+    const items = self.findOne({ _id: this._id }).items;
     return _.pluck(items, '_id').indexOf(itemId);
   },
 });
@@ -124,26 +144,29 @@ Checklists.mutations({
 
 if (Meteor.isServer) {
   Meteor.startup(() => {
+    Checklists._collection._ensureIndex({ modifiedAt: -1 });
     Checklists._collection._ensureIndex({ cardId: 1, createdAt: 1 });
   });
 
   Checklists.after.insert((userId, doc) => {
+    const card = Cards.findOne(doc.cardId);
     Activities.insert({
       userId,
       activityType: 'addChecklist',
       cardId: doc.cardId,
-      boardId: Cards.findOne(doc.cardId).boardId,
+      boardId: card.boardId,
       checklistId: doc._id,
-      checklistName:doc.title,
-      listId: doc.listId,
-      swimlaneId: doc.swimlaneId,
+      checklistName: doc.title,
+      listId: card.listId,
+      swimlaneId: card.swimlaneId,
     });
   });
 
   Checklists.before.remove((userId, doc) => {
     const activities = Activities.find({ checklistId: doc._id });
+    const card = Cards.findOne(doc.cardId);
     if (activities) {
-      activities.forEach((activity) => {
+      activities.forEach(activity => {
         Activities.remove(activity._id);
       });
     }
@@ -153,9 +176,9 @@ if (Meteor.isServer) {
       cardId: doc.cardId,
       boardId: Cards.findOne(doc.cardId).boardId,
       checklistId: doc._id,
-      checklistName:doc.title,
-      listId: doc.listId,
-      swimlaneId: doc.swimlaneId,
+      checklistName: doc.title,
+      listId: card.listId,
+      swimlaneId: card.swimlaneId,
     });
   });
 }
@@ -170,26 +193,32 @@ if (Meteor.isServer) {
    * @return_type [{_id: string,
    *                title: string}]
    */
-  JsonRoutes.add('GET', '/api/boards/:boardId/cards/:cardId/checklists', function (req, res) {
-    Authentication.checkUserId( req.userId);
-    const paramCardId = req.params.cardId;
-    const checklists = Checklists.find({ cardId: paramCardId }).map(function (doc) {
-      return {
-        _id: doc._id,
-        title: doc.title,
-      };
-    });
-    if (checklists) {
-      JsonRoutes.sendResult(res, {
-        code: 200,
-        data: checklists,
+  JsonRoutes.add(
+    'GET',
+    '/api/boards/:boardId/cards/:cardId/checklists',
+    function(req, res) {
+      Authentication.checkUserId(req.userId);
+      const paramCardId = req.params.cardId;
+      const checklists = Checklists.find({ cardId: paramCardId }).map(function(
+        doc,
+      ) {
+        return {
+          _id: doc._id,
+          title: doc.title,
+        };
       });
-    } else {
-      JsonRoutes.sendResult(res, {
-        code: 500,
-      });
-    }
-  });
+      if (checklists) {
+        JsonRoutes.sendResult(res, {
+          code: 200,
+          data: checklists,
+        });
+      } else {
+        JsonRoutes.sendResult(res, {
+          code: 500,
+        });
+      }
+    },
+  );
 
   /**
    * @operation get_checklist
@@ -207,29 +236,38 @@ if (Meteor.isServer) {
    *                        title: string,
    *                        isFinished: boolean}]}
    */
-  JsonRoutes.add('GET', '/api/boards/:boardId/cards/:cardId/checklists/:checklistId', function (req, res) {
-    Authentication.checkUserId( req.userId);
-    const paramChecklistId = req.params.checklistId;
-    const paramCardId = req.params.cardId;
-    const checklist = Checklists.findOne({ _id: paramChecklistId, cardId: paramCardId });
-    if (checklist) {
-      checklist.items = ChecklistItems.find({checklistId: checklist._id}).map(function (doc) {
-        return {
-          _id: doc._id,
-          title: doc.title,
-          isFinished: doc.isFinished,
-        };
+  JsonRoutes.add(
+    'GET',
+    '/api/boards/:boardId/cards/:cardId/checklists/:checklistId',
+    function(req, res) {
+      Authentication.checkUserId(req.userId);
+      const paramChecklistId = req.params.checklistId;
+      const paramCardId = req.params.cardId;
+      const checklist = Checklists.findOne({
+        _id: paramChecklistId,
+        cardId: paramCardId,
       });
-      JsonRoutes.sendResult(res, {
-        code: 200,
-        data: checklist,
-      });
-    } else {
-      JsonRoutes.sendResult(res, {
-        code: 500,
-      });
-    }
-  });
+      if (checklist) {
+        checklist.items = ChecklistItems.find({
+          checklistId: checklist._id,
+        }).map(function(doc) {
+          return {
+            _id: doc._id,
+            title: doc.title,
+            isFinished: doc.isFinished,
+          };
+        });
+        JsonRoutes.sendResult(res, {
+          code: 200,
+          data: checklist,
+        });
+      } else {
+        JsonRoutes.sendResult(res, {
+          code: 500,
+        });
+      }
+    },
+  );
 
   /**
    * @operation new_checklist
@@ -238,38 +276,58 @@ if (Meteor.isServer) {
    * @param {string} boardId the board ID
    * @param {string} cardId the card ID
    * @param {string} title the title of the new checklist
+   * @param {string} [items] the list of items on the new checklist
    * @return_type {_id: string}
    */
-  JsonRoutes.add('POST', '/api/boards/:boardId/cards/:cardId/checklists', function (req, res) {
-    Authentication.checkUserId( req.userId);
-
-    const paramCardId = req.params.cardId;
-    const id = Checklists.insert({
-      title: req.body.title,
-      cardId: paramCardId,
-      sort: 0,
-    });
-    if (id) {
-      req.body.items.forEach(function (item, idx) {
-        ChecklistItems.insert({
-          cardId: paramCardId,
-          checklistId: id,
-          title: item.title,
-          sort: idx,
+  JsonRoutes.add(
+    'POST',
+    '/api/boards/:boardId/cards/:cardId/checklists',
+    function(req, res) {
+      // Check user is logged in
+      Authentication.checkLoggedIn(req.userId);
+      const paramBoardId = req.params.boardId;
+      // Check user has permission to add checklist to the card
+      const board = Boards.findOne({
+        _id: paramBoardId,
+      });
+      const addPermission = allowIsBoardMemberCommentOnly(req.userId, board);
+      Authentication.checkAdminOrCondition(req.userId, addPermission);
+      const paramCardId = req.params.cardId;
+      const id = Checklists.insert({
+        title: req.body.title,
+        cardId: paramCardId,
+        sort: 0,
+      });
+      if (id) {
+        let items = req.body.items || [];
+        if (_.isString(items)) {
+          if (items === '') {
+            items = [];
+          } else {
+            items = [items];
+          }
+        }
+        items.forEach(function(item, idx) {
+          ChecklistItems.insert({
+            cardId: paramCardId,
+            checklistId: id,
+            title: item,
+            sort: idx,
+          });
         });
-      });
-      JsonRoutes.sendResult(res, {
-        code: 200,
-        data: {
-          _id: id,
-        },
-      });
-    } else {
-      JsonRoutes.sendResult(res, {
-        code: 400,
-      });
-    }
-  });
+        JsonRoutes.sendResult(res, {
+          code: 200,
+          data: {
+            _id: id,
+          },
+        });
+      } else {
+        JsonRoutes.sendResult(res, {
+          code: 400,
+        });
+      }
+    },
+  );
 
   /**
    * @operation delete_checklist
@@ -282,15 +340,21 @@ if (Meteor.isServer) {
    * @param {string} checklistId the ID of the checklist to remove
    * @return_type {_id: string}
    */
-  JsonRoutes.add('DELETE', '/api/boards/:boardId/cards/:cardId/checklists/:checklistId', function (req, res) {
-    Authentication.checkUserId( req.userId);
-    const paramChecklistId = req.params.checklistId;
-    Checklists.remove({ _id: paramChecklistId });
-    JsonRoutes.sendResult(res, {
-      code: 200,
-      data: {
-        _id: paramChecklistId,
-      },
-    });
-  });
+  JsonRoutes.add(
+    'DELETE',
+    '/api/boards/:boardId/cards/:cardId/checklists/:checklistId',
+    function(req, res) {
+      Authentication.checkUserId(req.userId);
+      const paramChecklistId = req.params.checklistId;
+      Checklists.remove({ _id: paramChecklistId });
+      JsonRoutes.sendResult(res, {
+        code: 200,
+        data: {
+          _id: paramChecklistId,
+        },
+      });
+    },
+  );
 }
+
+export default Checklists;
