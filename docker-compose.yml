@@ -104,7 +104,7 @@ services:
     networks:
       - wekan-tier
     expose:
-      - 27017
+      - 27017:27017
     volumes:
       - wekan-db:/data/db
       - wekan-db-dump:/dump
